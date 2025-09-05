@@ -111,10 +111,22 @@
                 if (!file) {
                     ui.status.textContent = 'Gist exists, but is empty. Initializing new Chronicle. Syncing...';
                     history = []; await saveChronicle();
-                } else {
-                    const encryptedData = file.content; const decrypted = decrypt(encryptedData, config.secretKey);
-                    if (!decrypted) { throw new Error('DECRYPTION FAILED. The Chronicle Key is WRONG for this Gist.'); }
-                    history = JSON.parse(decrypted); ui.status.textContent = `Chronicle unlocked. ${history.length} entries loaded.`;
+                    } else {
+                        const content = file.content;
+                        // NEW: Check if the Gist is newly created with just a placeholder
+                        if (content.trim() === '[]' || content.trim() === '') {
+                            ui.status.textContent = 'Empty Gist detected. Initializing new Chronicle. Syncing...';
+                            history = [];
+                            await saveChronicle(); // This will encrypt the empty history with your new key
+                        } else {
+                            // This part is the same as before
+                            const decrypted = decrypt(content, config.secretKey);
+                            if (!decrypted) {
+                                throw new Error('DECRYPTION FAILED. The Chronicle Key is WRONG for this Gist.');
+                            }
+                            history = JSON.parse(decrypted);
+                            ui.status.textContent = `Chronicle unlocked. ${history.length} entries loaded.`;
+                        }
                 }
             } else { throw new Error(`GitHub API Error: ${response.statusText}`); }
             sessionStorage.setItem('cypherConfig', JSON.stringify(config));
