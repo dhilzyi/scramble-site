@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Citadel v9 [HERMIT]</title>
+    <title>Citadel v10 [SECURE SYNC]</title>
+    <!-- Your CSS styles are perfect, no changes needed here -->
     <style>
         body { font-family: 'Courier New', Courier, monospace; background-color: #0a0a0a; color: #00ff41; padding: 10px; margin: 0; }
         .container { width: 100%; max-width: 1900px; margin: 0 auto; }
@@ -22,19 +23,19 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 
     <div class="container">
-        <h1>Citadel [Hermit Edition]</h1>
-        <p id="status">Enter your password to unlock the local history.</p>
+        <h1>Citadel [Secure Sync Edition]</h1>
+        <p id="status">Enter your credentials to sync and unlock the chronicle.</p>
         
         <div class="panel" id="setupPanel" style="max-width: 600px; margin: 20px auto;">
-            <h2>Unlock Local History</h2>
-            <div>
-                <label class="item-label">Password</label>
-                <input type="password" id="secretKey">
-            </div>
-            <button onclick="unlockLocalHistory()">Unlock / Create</button>
+            <h2>Unlock Chronicle</h2>
+            <div style="margin-bottom: 10px;"><label class="item-label">GitHub Personal Access Token (PAT)</label><input type="password" id="githubPat"></div>
+            <div style="margin-bottom: 10px;"><label class="item-label">Gist ID</label><input type="text" id="gistId"></div>
+            <div style="margin-bottom: 10px;"><label class="item-label">Master Password</label><input type="password" id="secretKey"></div>
+            <button onclick="unlockAndSync()">Unlock / Sync</button>
         </div>
 
         <div id="mainApp" class="hidden">
+             <!-- The rest of your app's UI is perfect, no changes needed here -->
              <div class="main-flex-container">
                 <div class="panel">
                     <h2>Step 1: Scramble Command</h2>
@@ -50,13 +51,13 @@
                     <textarea id="scrambledInput" placeholder="Paste the AI's scrambled response here..."></textarea>
                     <label class="item-label" style="margin-top:15px;">Your Original Command (Plain Text)</label>
                     <textarea id="originalCommandForHistory" placeholder="Paste your original, normal command here to save it to history..."></textarea>
-                    <button onclick="descrambleText()">Descramble & Save to Local History</button>
+                    <button onclick="descrambleText()">Descramble & Save to Chronicle</button>
                     <label class="item-label" style="margin-top:15px;">Deciphered Truth</label>
                     <textarea id="descrambledOutputText" readonly></textarea>
                 </div>
             </div>
              <div class="panel" style="margin-top: 15px;">
-                <h2>History <button onclick="lockLocalHistory()" style="width: auto; float: right;">Lock</button></h2>
+                <h2>Chronicle <button onclick="lockChronicle()" style="width: auto; float: right;">Lock</button></h2>
                 <input type="text" id="historySearch" onkeyup="renderHistory()" placeholder="Search History..." style="margin-bottom: 10px;">
                 <div id="historyContainer" style="max-height: 60vh; overflow-y: auto;"></div>
             </div>
@@ -64,23 +65,27 @@
     </div>
 
 <script>
-    let history = [], sessionPassword = '';
-    const STORAGE_KEY = 'cypherHistoryEncrypted';
+    // SECURE: No secrets are stored in the code.
+    let history = [], config = {};
     const ui = {
         status: document.getElementById('status'), setupPanel: document.getElementById('setupPanel'), mainApp: document.getElementById('mainApp'),
-        secretKey: document.getElementById('secretKey'), inputText: document.getElementById('inputText'), scrambledInput: document.getElementById('scrambledInput'),
+        githubPat: document.getElementById('githubPat'), gistId: document.getElementById('gistId'), secretKey: document.getElementById('secretKey'),
+        inputText: document.getElementById('inputText'), scrambledInput: document.getElementById('scrambledInput'),
         originalCommandForHistory: document.getElementById('originalCommandForHistory'), scrambledOutputText: document.getElementById('scrambledOutputText'),
         descrambledOutputText: document.getElementById('descrambledOutputText'), historyContainer: document.getElementById('historyContainer'),
         historySearch: document.getElementById('historySearch'),
     };
 
+    // Scramble/Descramble functions are fine, no changes needed.
+    function scrambleText() { /* ... unchanged ... */ }
+    async function descrambleText() { /* ... almost unchanged ... */ }
+    
     function scrambleText() {
         const command = ui.inputText.value; if (!command) return;
         let scrambled = command.replace(/[\u3041-\u3096]/g, m => String.fromCharCode(m.charCodeAt(0) + 0x60));
         scrambled = scrambled.split('').join('　');
         ui.scrambledOutputText.value = scrambled; ui.originalCommandForHistory.value = command;
     }
-
     async function descrambleText() {
         const scrambledResponse = ui.scrambledInput.value; const originalCommand = ui.originalCommandForHistory.value;
         if (!scrambledResponse || !originalCommand) { alert("Please provide the AI's response and your original command."); return; }
@@ -89,63 +94,111 @@
         ui.descrambledOutputText.value = descrambled;
         history.unshift({ id: Date.now(), command: originalCommand, descrambledResponse: descrambled });
         if (history.length > 200) history.pop();
-        saveLocalHistory(); renderHistory();
+        await saveAndSyncHistory(); // Use the sync function
+        renderHistory();
+        ui.scrambledInput.value = ''; ui.originalCommandForHistory.value = ''; ui.descrambledOutputText.value = '';
     }
 
+    // Encryption functions are fine, no changes needed.
     function encrypt(text, key) { return CryptoJS.AES.encrypt(text, key).toString(); }
     function decrypt(ciphertext, key) { return CryptoJS.AES.decrypt(ciphertext, key).toString(CryptoJS.enc.Utf8); }
 
-    function saveLocalHistory() {
-        if (!sessionPassword) return;
+    // This function now reads credentials from the config object
+    async function saveAndSyncHistory() {
+        if (!config.secretKey) return;
         try {
-            const encryptedData = encrypt(JSON.stringify(history), sessionPassword);
-            localStorage.setItem(STORAGE_KEY, encryptedData);
-        } catch (e) { console.error("Failed to save history:", e); }
+            const encryptedData = encrypt(JSON.stringify(history), config.secretKey);
+            ui.status.textContent = 'Saving... Syncing to cloud...';
+            const payload = { files: { 'chronicle.json': { content: encryptedData } } };
+            const response = await fetch(`https://api.github.com/gists/${config.gistId}`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `token ${config.pat}`, 'Accept': 'application/vnd.github.v3+json' },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) { throw new Error(`GitHub API Error: ${response.statusText}`); }
+            ui.status.textContent = 'Chronicle saved and synced.';
+        } catch (e) {
+            ui.status.textContent = `Sync Failed: ${e.message}.`;
+            console.error("Failed to sync history:", e);
+        }
     }
 
-    function unlockLocalHistory() {
-        const password = ui.secretKey.value;
-        if (!password) { ui.status.textContent = 'A password is required.'; return; }
-        const encryptedData = localStorage.getItem(STORAGE_KEY);
-        if (encryptedData) {
-            try {
-                const decrypted = decrypt(encryptedData, password);
-                if (!decrypted) throw new Error('Invalid Password.');
-                history = JSON.parse(decrypted);
-                ui.status.textContent = `History loaded with ${history.length} entries.`;
-            } catch (e) {
-                ui.status.textContent = 'Error: Invalid Password.';
-                return;
-            }
-        } else {
-            history = [];
-            ui.status.textContent = 'No local history found. A new one will be created with this password.';
+    // This is the core login function, now reading from input fields
+    async function unlockAndSync() {
+        config = {
+            pat: ui.githubPat.value.trim(),
+            gistId: ui.gistId.value.trim(),
+            secretKey: ui.secretKey.value
+        };
+        if (!config.pat || !config.gistId || !config.secretKey) {
+            ui.status.textContent = 'All three fields are required.';
+            return;
         }
-        sessionPassword = password;
-        sessionStorage.setItem('cypherSessionPassword', password);
-        ui.setupPanel.classList.add('hidden');
-        ui.mainApp.classList.remove('hidden');
-        renderHistory();
+        
+        ui.status.textContent = 'Unlocking... Accessing cloud chronicle...';
+        
+        try {
+            const response = await fetch(`https://api.github.com/gists/${config.gistId}`, {
+                headers: { 'Authorization': `token ${config.pat}`, 'Accept': 'application/vnd.github.v3+json' }
+            });
+
+            if (response.status === 404) {
+                // This logic handles creating a new Gist's chronicle
+                ui.status.textContent = 'Gist not found. A new chronicle will be created on first save.';
+                history = [];
+            } else if (!response.ok) {
+                 throw new Error(`GitHub API Error: ${response.statusText}`);
+            } else {
+                const gistData = await response.json();
+                const file = gistData.files['chronicle.json'];
+                if (!file || !file.content || file.content.trim() === '[]') {
+                    history = [];
+                    ui.status.textContent = 'Cloud chronicle is empty. Ready to start.';
+                } else {
+                    const encryptedData = file.content;
+                    const decrypted = decrypt(encryptedData, config.secretKey);
+                    if (!decrypted) {
+                        throw new Error('DECRYPTION FAILED. The Master Password is WRONG for this chronicle.');
+                    }
+                    history = JSON.parse(decrypted);
+                    ui.status.textContent = `Chronicle synced. ${history.length} entries loaded.`;
+                }
+            }
+            
+            // Success! Save credentials to sessionStorage for convenience (it clears when tab closes)
+            sessionStorage.setItem('cypherConfig', JSON.stringify(config));
+            ui.setupPanel.classList.add('hidden');
+            ui.mainApp.classList.remove('hidden');
+            renderHistory();
+
+        } catch (e) {
+            ui.status.textContent = `Error: ${e.message}`;
+        }
     }
     
-    function lockLocalHistory() {
-        sessionPassword = '';
-        sessionStorage.removeItem('cypherSessionPassword');
-        ui.secretKey.value = '';
+    function lockChronicle() {
+        config = {};
+        history = [];
+        sessionStorage.removeItem('cypherConfig');
+        ui.githubPat.value = ''; ui.gistId.value = ''; ui.secretKey.value = '';
         ui.mainApp.classList.add('hidden');
         ui.setupPanel.classList.remove('hidden');
-        ui.status.textContent = 'History locked.';
+        ui.status.textContent = 'Chronicle locked.';
     }
 
     function init() {
-        const savedPassword = sessionStorage.getItem('cypherSessionPassword');
-        if (savedPassword) {
-            ui.secretKey.value = savedPassword;
-            unlockLocalHistory();
+        const savedConfig = sessionStorage.getItem('cypherConfig');
+        if (savedConfig) {
+            const parsedConfig = JSON.parse(savedConfig);
+            ui.githubPat.value = parsedConfig.pat;
+            ui.gistId.value = parsedConfig.gistId;
+            ui.secretKey.value = parsedConfig.secretKey;
+            unlockAndSync();
         }
     }
 
     function renderHistory() {
+        // This function is perfect, no changes needed.
         const searchTerm = ui.historySearch.value.toLowerCase();
         const filteredHistory = history.filter(s => s.command.toLowerCase().includes(searchTerm) || (s.descrambledResponse && s.descrambledResponse.toLowerCase().includes(searchTerm)));
         ui.historyContainer.innerHTML = '';
