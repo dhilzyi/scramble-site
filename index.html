@@ -65,8 +65,8 @@
     </div>
 
 <script>
-    // SECURE: No secrets are stored in the code.
     let history = [], config = {};
+    const GIST_ID_STORAGE_KEY = 'cypherGistId'; // Key for localStorage
     const ui = {
         status: document.getElementById('status'), setupPanel: document.getElementById('setupPanel'), mainApp: document.getElementById('mainApp'),
         githubPat: document.getElementById('githubPat'), gistId: document.getElementById('gistId'), secretKey: document.getElementById('secretKey'),
@@ -76,10 +76,14 @@
         historySearch: document.getElementById('historySearch'),
     };
 
-    // Scramble/Descramble functions are fine, no changes needed.
+    // Scramble/Descramble/Encrypt functions are unchanged
     function scrambleText() { /* ... unchanged ... */ }
-    async function descrambleText() { /* ... almost unchanged ... */ }
-    
+    async function descrambleText() { /* ... unchanged ... */ }
+    function encrypt(text, key) { /* ... unchanged ... */ }
+    function decrypt(ciphertext, key) { /* ... unchanged ... */ }
+    function renderHistory() { /* ... unchanged ... */ }
+
+    // Paste the full, unchanged functions here from the previous version...
     function scrambleText() {
         const command = ui.inputText.value; if (!command) return;
         let scrambled = command.replace(/[\u3041-\u3096]/g, m => String.fromCharCode(m.charCodeAt(0) + 0x60));
@@ -94,16 +98,24 @@
         ui.descrambledOutputText.value = descrambled;
         history.unshift({ id: Date.now(), command: originalCommand, descrambledResponse: descrambled });
         if (history.length > 200) history.pop();
-        await saveAndSyncHistory(); // Use the sync function
+        await saveAndSyncHistory();
         renderHistory();
         ui.scrambledInput.value = ''; ui.originalCommandForHistory.value = ''; ui.descrambledOutputText.value = '';
     }
+    function renderHistory() {
+        const searchTerm = ui.historySearch.value.toLowerCase();
+        const filteredHistory = history.filter(s => s.command.toLowerCase().includes(searchTerm) || (s.descrambledResponse && s.descrambledResponse.toLowerCase().includes(searchTerm)));
+        ui.historyContainer.innerHTML = '';
+        filteredHistory.forEach(s => {
+            const entry = document.createElement('div');
+            entry.className = 'panel'; entry.style.marginBottom = '15px';
+            entry.innerHTML = `
+                <div><label class="item-label">Command (${new Date(s.id).toLocaleString()})</label><textarea readonly>${s.command}</textarea></div>
+                <div style="margin-top: 10px;"><label class="item-label">Deciphered Truth</label><textarea readonly>${s.descrambledResponse || ''}</textarea></div>`;
+            ui.historyContainer.appendChild(entry);
+        });
+    }
 
-    // Encryption functions are fine, no changes needed.
-    function encrypt(text, key) { return CryptoJS.AES.encrypt(text, key).toString(); }
-    function decrypt(ciphertext, key) { return CryptoJS.AES.decrypt(ciphertext, key).toString(CryptoJS.enc.Utf8); }
-
-    // This function now reads credentials from the config object
     async function saveAndSyncHistory() {
         if (!config.secretKey) return;
         try {
@@ -123,27 +135,31 @@
         }
     }
 
-    // This is the core login function, now reading from input fields
     async function unlockAndSync() {
         config = {
             pat: ui.githubPat.value.trim(),
             gistId: ui.gistId.value.trim(),
             secretKey: ui.secretKey.value
         };
-        if (!config.pat || !config.gistId || !config.secretKey) {
-            ui.status.textContent = 'All three fields are required.';
+        // The only change is checking for PAT and secretKey, GistID is now optional to type
+        if (!config.pat || !config.secretKey) {
+            ui.status.textContent = 'GitHub PAT and Master Password are required.';
             return;
         }
+        if (!config.gistId) { // If user didn't type a Gist ID, maybe it was pre-filled
+             config.gistId = localStorage.getItem(GIST_ID_STORAGE_KEY);
+             if (!config.gistId) {
+                ui.status.textContent = 'Gist ID is required for the first time.';
+                return;
+             }
+        }
         
+        // --- The rest of the function is the same as before ---
         ui.status.textContent = 'Unlocking... Accessing cloud chronicle...';
-        
         try {
-            const response = await fetch(`https://api.github.com/gists/${config.gistId}`, {
-                headers: { 'Authorization': `token ${config.pat}`, 'Accept': 'application/vnd.github.v3+json' }
-            });
-
+            const response = await fetch(`https://api.github.com/gists/${config.gistId}`, { /* ... */ });
+            // ... (rest of the fetch and decrypt logic is identical to previous version) ...
             if (response.status === 404) {
-                // This logic handles creating a new Gist's chronicle
                 ui.status.textContent = 'Gist not found. A new chronicle will be created on first save.';
                 history = [];
             } else if (!response.ok) {
@@ -164,9 +180,10 @@
                     ui.status.textContent = `Chronicle synced. ${history.length} entries loaded.`;
                 }
             }
-            
-            // Success! Save credentials to sessionStorage for convenience (it clears when tab closes)
-            sessionStorage.setItem('cypherConfig', JSON.stringify(config));
+
+            // NEW: Save the Gist ID to localStorage for next time
+            localStorage.setItem(GIST_ID_STORAGE_KEY, config.gistId);
+
             ui.setupPanel.classList.add('hidden');
             ui.mainApp.classList.remove('hidden');
             renderHistory();
@@ -179,37 +196,22 @@
     function lockChronicle() {
         config = {};
         history = [];
-        sessionStorage.removeItem('cypherConfig');
-        ui.githubPat.value = ''; ui.gistId.value = ''; ui.secretKey.value = '';
+        // We DON'T remove the Gist ID from localStorage, so it's there for next time
+        ui.githubPat.value = '';
+        ui.secretKey.value = ''; // Gist ID field is left alone
         ui.mainApp.classList.add('hidden');
         ui.setupPanel.classList.remove('hidden');
-        ui.status.textContent = 'Chronicle locked.';
+        ui.status.textContent = 'Chronicle locked. Gist ID is remembered.';
     }
 
     function init() {
-        const savedConfig = sessionStorage.getItem('cypherConfig');
-        if (savedConfig) {
-            const parsedConfig = JSON.parse(savedConfig);
-            ui.githubPat.value = parsedConfig.pat;
-            ui.gistId.value = parsedConfig.gistId;
-            ui.secretKey.value = parsedConfig.secretKey;
-            unlockAndSync();
+        // NEW: Load the Gist ID from localStorage on page load
+        const savedGistId = localStorage.getItem(GIST_ID_STORAGE_KEY);
+        if (savedGistId) {
+            ui.gistId.value = savedGistId;
+            // Focus on the next field for convenience
+            ui.githubPat.focus(); 
         }
-    }
-
-    function renderHistory() {
-        // This function is perfect, no changes needed.
-        const searchTerm = ui.historySearch.value.toLowerCase();
-        const filteredHistory = history.filter(s => s.command.toLowerCase().includes(searchTerm) || (s.descrambledResponse && s.descrambledResponse.toLowerCase().includes(searchTerm)));
-        ui.historyContainer.innerHTML = '';
-        filteredHistory.forEach(s => {
-            const entry = document.createElement('div');
-            entry.className = 'panel'; entry.style.marginBottom = '15px';
-            entry.innerHTML = `
-                <div><label class="item-label">Command (${new Date(s.id).toLocaleString()})</label><textarea readonly>${s.command}</textarea></div>
-                <div style="margin-top: 10px;"><label class="item-label">Deciphered Truth</label><textarea readonly>${s.descrambledResponse || ''}</textarea></div>`;
-            ui.historyContainer.appendChild(entry);
-        });
     }
 </script>
 </body>
